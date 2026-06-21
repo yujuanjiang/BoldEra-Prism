@@ -1,0 +1,45 @@
+{
+  "topics": [
+    {
+      "id": "ai-programming",
+      "name": "AI Programming",
+      "keywords": [
+        "AI agents programming",
+        "LLM software engineering",
+        "RAG application development",
+        "AI coding tools"
+      ],
+      "reddit": {
+        "subreddits": [
+          "LocalLLaMA",
+          "MachineLearning",
+          "learnprogramming",
+          "programming"
+        ]
+      },
+      "youtube": {
+        "query": "AI programming agents software engineering"
+      }
+    },
+    {
+      "id": "investing",
+      "name": "Investing",
+      "keywords": [
+        "value investing",
+        "portfolio management",
+        "market analysis",
+        "financial education"
+      ],
+      "reddit": {
+        "subreddits": [
+          "investing",
+          "ValueInvesting",
+          "SecurityAnalysis"
+        ]
+      },
+      "youtube": {
+        "query": "value investing financial education"
+      }
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+name: Collect Topic Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: Topic id from config/topics.json
+        required: true
+        default: ai-programming
+      sources:
+        description: Comma-separated sources to collect
+        required: true
+        default: reddit,youtube
+      limit:
+        description: Items per source query
+        required: true
+        default: "10"
+      dry_run:
+        description: Validate setup without calling external APIs
+        required: true
+        type: boolean
+        default: false
+      sink:
+        description: Destination for collected data
+        required: true
+        type: choice
+        default: supabase
+        options:
+          - supabase
+          - jsonl
+      run_ai:
+        description: Analyze collected Supabase items with AI
+        required: true
+        type: boolean
+        default: true
+      compare_limit:
+        description: Recent source items to compare for similar/controversial points
+        required: true
+        default: "8"
+  schedule:
+    - cron: "17 12 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TOPIC: ${{ github.event.inputs.topic || 'ai-programming' }}
+      SOURCES: ${{ github.event.inputs.sources || 'reddit,youtube' }}
+      LIMIT: ${{ github.event.inputs.limit || '10' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+      SINK: ${{ github.event.inputs.sink || 'supabase' }}
+      RUN_AI: ${{ github.event.inputs.run_ai || 'true' }}
+      COMPARE_LIMIT: ${{ github.event.inputs.compare_limit || '8' }}
+      PYTHONPATH: src
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Collect data
+        run: |
+          ARGS=(
+            --topic "$TOPIC"
+            --sources "$SOURCES"
+            --limit "$LIMIT"
+            --sink "$SINK"
+            --output data/raw
+          )
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          python -m prism_collector.cli "${ARGS[@]}"
+
+      - name: Analyze collected data
+        if: ${{ env.DRY_RUN != 'true' && env.SINK == 'supabase' && env.RUN_AI == 'true' }}
+        run: |
+          python -m prism_collector.process_cli \
+            --topic "$TOPIC" \
+            --limit "$LIMIT" \
+            --compare-limit "$COMPARE_LIMIT"
+
+      - name: Upload collected data
+        if: ${{ env.DRY_RUN != 'true' && env.SINK == 'jsonl' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: prism-raw-${{ env.TOPIC }}-${{ github.run_id }}
+          path: data/raw/*.jsonl
+          if-no-files-found: error
