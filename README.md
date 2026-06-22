@@ -58,7 +58,7 @@ PYTHONPATH=src python3 -m prism_collector.cli --topic ai-company-building --dry-
 
 Open the **Collect Topic Data** workflow and trigger it manually with:
 
-- `topic`: `ai-company-building`, `ai-investing`, or `ai-agents-skills`
+- `topic`: `ai-company-building`, `ai-investing`, `ai-agents-skills`, `ai-work-productivity`, or `ai-life-productivity`
 - `sources`: `youtube` by default; `reddit` is currently paused
 - `limit`: number of items per source query
 - `dry_run`: validates configuration without calling source APIs

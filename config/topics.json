@@ -53,6 +53,42 @@
       "youtube": {
         "query": "AI agents skills tool use agentic workflows"
       }
+    },
+    {
+      "id": "ai-work-productivity",
+      "name": "How to Use AI to Improve Your Work Productivity",
+      "keywords": [
+        "AI work productivity",
+        "AI tools for work",
+        "AI workflow automation",
+        "ChatGPT for productivity at work",
+        "AI meeting email document productivity"
+      ],
+      "reddit": {
+        "enabled": false,
+        "subreddits": []
+      },
+      "youtube": {
+        "query": "how to use AI to improve work productivity workflow automation"
+      }
+    },
+    {
+      "id": "ai-life-productivity",
+      "name": "How to Use AI to Improve Your Life Productivity",
+      "keywords": [
+        "AI life productivity",
+        "AI personal productivity",
+        "ChatGPT for daily life",
+        "AI personal assistant",
+        "AI habits planning productivity"
+      ],
+      "reddit": {
+        "enabled": false,
+        "subreddits": []
+      },
+      "youtube": {
+        "query": "how to use AI to improve personal productivity daily life"
+      }
     }
   ]
 }

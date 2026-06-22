@@ -10,7 +10,13 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(
             [topic["id"] for topic in topics],
-            ["ai-company-building", "ai-investing", "ai-agents-skills"],
+            [
+                "ai-company-building",
+                "ai-investing",
+                "ai-agents-skills",
+                "ai-work-productivity",
+                "ai-life-productivity",
+            ],
         )
 
     def test_find_topic_rejects_unknown_topic(self) -> None:
