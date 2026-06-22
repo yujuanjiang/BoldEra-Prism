@@ -10,7 +10,7 @@ class AiTest(unittest.TestCase):
             {
                 "id": 123,
                 "source": "reddit",
-                "topic_id": "ai-programming",
+                "topic_id": "ai-company-building",
                 "title": "Useful discussion",
                 "url": "https://example.com",
                 "raw_text": "A long discussion",

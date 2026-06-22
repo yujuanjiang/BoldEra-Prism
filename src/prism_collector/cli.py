@@ -29,8 +29,8 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10, help="Items per source query")
     parser.add_argument(
         "--sources",
-        default="reddit,youtube",
-        help="Comma-separated sources to run: reddit,youtube",
+        default="youtube",
+        help="Comma-separated sources to run. Default: youtube",
     )
     parser.add_argument(
         "--dry-run",

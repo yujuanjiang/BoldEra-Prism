@@ -1,44 +1,57 @@
 {
   "topics": [
     {
-      "id": "ai-programming",
-      "name": "AI Programming",
+      "id": "ai-company-building",
+      "name": "How to Create Your Company Using AI",
       "keywords": [
-        "AI agents programming",
-        "LLM software engineering",
-        "RAG application development",
-        "AI coding tools"
+        "start a company with AI",
+        "AI startup from zero",
+        "AI business automation",
+        "AI tools for founders",
+        "build a business using AI"
       ],
       "reddit": {
-        "subreddits": [
-          "LocalLLaMA",
-          "MachineLearning",
-          "learnprogramming",
-          "programming"
-        ]
+        "enabled": false,
+        "subreddits": []
       },
       "youtube": {
-        "query": "AI programming agents software engineering"
+        "query": "how to start a company using AI tools startup founder"
       }
     },
     {
-      "id": "investing",
-      "name": "Investing",
+      "id": "ai-investing",
+      "name": "Using AI for Investing",
       "keywords": [
-        "value investing",
-        "portfolio management",
-        "market analysis",
-        "financial education"
+        "AI for investing",
+        "AI stock analysis",
+        "AI portfolio research",
+        "LLM financial analysis",
+        "AI investing tools"
       ],
       "reddit": {
-        "subreddits": [
-          "investing",
-          "ValueInvesting",
-          "SecurityAnalysis"
-        ]
+        "enabled": false,
+        "subreddits": []
       },
       "youtube": {
-        "query": "value investing financial education"
+        "query": "using AI for investing stock analysis portfolio research"
+      }
+    },
+    {
+      "id": "ai-agents-skills",
+      "name": "AI Agent and Skills",
+      "keywords": [
+        "AI agents",
+        "agentic workflows",
+        "AI skills",
+        "tool-using AI agents",
+        "multi-agent systems"
+      ],
+      "reddit": {
+        "enabled": false,
+        "subreddits": []
+      },
+      "youtube": {
+        "query": "AI agents skills tool use agentic workflows"
       }
     }
   ]

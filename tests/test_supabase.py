@@ -17,7 +17,7 @@ class SupabaseTest(unittest.TestCase):
         row = _row(
             SourceItem(
                 source="reddit",
-                topic_id="ai-programming",
+                topic_id="ai-company-building",
                 external_id="abc",
                 url="https://example.com",
                 title="Example",

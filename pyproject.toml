@@ -7,7 +7,9 @@ name = "boldera-prism"
 version = "0.1.0"
 description = "Topic-based data collection and synthesis infrastructure."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "youtube-transcript-api>=0.6.2",
+]
 
 [project.optional-dependencies]
 ui = [
