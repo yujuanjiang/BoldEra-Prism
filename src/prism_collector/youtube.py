@@ -123,14 +123,21 @@ def _fetch_transcript(video_id: str) -> str | None:
         return None
 
     try:
-        if hasattr(YouTubeTranscriptApi, "get_transcript"):
+        api = YouTubeTranscriptApi()
+        if hasattr(api, "fetch"):
+            transcript = api.fetch(video_id, languages=["en"])
+        elif hasattr(YouTubeTranscriptApi, "get_transcript"):
             transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
         else:
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             transcript = transcript_list.find_transcript(["en"]).fetch()
     except Exception as first_exc:
         try:
-            if hasattr(YouTubeTranscriptApi, "get_transcript"):
+            api = YouTubeTranscriptApi()
+            if hasattr(api, "list"):
+                transcript_list = api.list(video_id)
+                transcript = transcript_list.find_generated_transcript(["en"]).fetch()
+            elif hasattr(YouTubeTranscriptApi, "get_transcript"):
                 transcript = YouTubeTranscriptApi.get_transcript(video_id)
             else:
                 transcript = YouTubeTranscriptApi.list_transcripts(video_id).find_generated_transcript(
@@ -143,10 +150,16 @@ def _fetch_transcript(video_id: str) -> str | None:
     return _transcript_to_text(transcript)
 
 
-def _transcript_to_text(transcript: list[dict[str, Any]]) -> str | None:
-    parts = [str(segment.get("text", "")).strip() for segment in transcript]
+def _transcript_to_text(transcript: Any) -> str | None:
+    parts = [_transcript_segment_text(segment) for segment in transcript]
     text = " ".join(part for part in parts if part)
     return text or None
+
+
+def _transcript_segment_text(segment: Any) -> str:
+    if isinstance(segment, dict):
+        return str(segment.get("text", "")).strip()
+    return str(getattr(segment, "text", "")).strip()
 
 
 def _fetch_video_comments(video_id: str, *, api_key: str, limit: int) -> list[dict[str, Any]]:

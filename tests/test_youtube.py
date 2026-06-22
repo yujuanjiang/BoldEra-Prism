@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import dataclass
 from unittest.mock import patch
 
 from prism_collector.youtube import (
@@ -20,6 +21,15 @@ class YouTubeTest(unittest.TestCase):
         text = _transcript_to_text([{"text": "Hello"}, {"text": "world"}])
 
         self.assertEqual(text, "Hello world")
+
+    def test_transcript_to_text_handles_object_segments(self) -> None:
+        @dataclass
+        class Segment:
+            text: str
+
+        text = _transcript_to_text([Segment("Hello"), Segment("objects")])
+
+        self.assertEqual(text, "Hello objects")
 
     def test_comment_thread_to_dict(self) -> None:
         comment = _comment_thread_to_dict(
