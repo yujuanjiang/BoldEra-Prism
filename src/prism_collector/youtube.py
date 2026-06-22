@@ -56,6 +56,9 @@ def collect_youtube(topic: dict[str, Any], limit: int = 10) -> list[SourceItem]:
         statistics = details.get("statistics", {})
         comment_count = _int_or_none(statistics.get("commentCount"))
         transcript = _fetch_transcript(video_id)
+        if not transcript:
+            print(f"Skipping YouTube video {video_id}: transcript unavailable", file=sys.stderr)
+            continue
         comments = (
             _fetch_video_comments(video_id, api_key=api_key, limit=MAX_COMMENT_THREADS)
             if _should_collect_comments(comment_count)
@@ -73,15 +76,17 @@ def collect_youtube(topic: dict[str, Any], limit: int = 10) -> list[SourceItem]:
                 community=detail_snippet.get("channelTitle") or snippet.get("channelTitle"),
                 published_at=detail_snippet.get("publishedAt") or snippet.get("publishedAt"),
                 comment_count=comment_count,
-                raw_text=transcript or description,
+                raw_text=transcript,
                 metadata={
                     "channel_id": detail_snippet.get("channelId") or snippet.get("channelId"),
                     "thumbnail": _thumbnail_url(detail_snippet or snippet),
                     "description": description,
+                    "raw_text_kind": "transcript",
+                    "transcript_char_count": len(transcript),
                     "view_count": _int_or_none(statistics.get("viewCount")),
                     "like_count": _int_or_none(statistics.get("likeCount")),
-                    "transcript_available": bool(transcript),
-                    "transcript_source": "youtube-transcript-api" if transcript else None,
+                    "transcript_available": True,
+                    "transcript_source": "youtube-transcript-api",
                     "comments_collected": len(comments),
                     "comment_collection_threshold": COMMENT_COLLECTION_THRESHOLD,
                     "youtube_comments": comments,

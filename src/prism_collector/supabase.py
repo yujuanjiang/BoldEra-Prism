@@ -18,12 +18,7 @@ def write_supabase(items: list[SourceItem], table: str = "source_items") -> int:
     if not items:
         return 0
 
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-    if not url or not key:
-        raise SupabaseConfigError(
-            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY must be set"
-        )
+    url, key = _supabase_credentials()
 
     endpoint = _table_endpoint(url, table)
     payload = json.dumps([_row(item) for item in items], ensure_ascii=False).encode("utf-8")
@@ -31,12 +26,7 @@ def write_supabase(items: list[SourceItem], table: str = "source_items") -> int:
         endpoint,
         data=payload,
         method="POST",
-        headers={
-            "apikey": key,
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=minimal",
-        },
+        headers=_headers("resolution=merge-duplicates,return=minimal"),
     )
 
     try:
@@ -91,8 +81,7 @@ def fetch_reader_items(
         "select": (
             "id,source,topic_id,external_id,url,title,author,community,published_at,"
             "collected_at,score,comment_count,raw_text,metadata,user_status,saved,user_note,"
-            "last_seen_at,source_item_analyses(summary,highlights,claims,tools_mentioned,tags,"
-            "difficulty,learning_value,follow_up_questions)"
+            "last_seen_at"
         ),
         "order": "collected_at.desc",
         "limit": str(limit),
@@ -103,7 +92,28 @@ def fetch_reader_items(
         filters["user_status"] = f"eq.{status}"
     if saved is not None:
         filters["saved"] = f"eq.{str(saved).lower()}"
-    return _get("source_items", filters)
+    rows = _get("source_items", filters)
+    return _attach_item_analyses(rows)
+
+
+def fetch_source_item_count() -> int | None:
+    request = urllib.request.Request(
+        _rest_url("source_items", {"select": "id", "limit": "1"}),
+        headers={**_headers(), "Prefer": "count=exact"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            content_range = response.headers.get("Content-Range")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Supabase count failed: HTTP {exc.code}: {body}") from exc
+    if not content_range or "/" not in content_range:
+        return None
+    total = content_range.rsplit("/", 1)[-1]
+    if total == "*":
+        return None
+    return int(total)
 
 
 def fetch_topic_comparisons(topic_id: str | None = None, limit: int = 10) -> list[dict[str, object]]:
@@ -161,6 +171,32 @@ def insert_topic_comparison(row: dict[str, object]) -> int:
     return 1
 
 
+def using_service_role_key() -> bool:
+    return bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+
+
+def _attach_item_analyses(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    ids = [str(row.get("id")) for row in rows if row.get("id") is not None]
+    if not ids:
+        return rows
+    analyses = _get(
+        "source_item_analyses",
+        {
+            "select": (
+                "source_item_id,summary,highlights,claims,tools_mentioned,tags,"
+                "difficulty,learning_value,follow_up_questions"
+            ),
+            "source_item_id": f"in.({','.join(ids)})",
+        },
+    )
+    by_item_id: dict[str, list[dict[str, object]]] = {}
+    for analysis in analyses:
+        by_item_id.setdefault(str(analysis.get("source_item_id")), []).append(analysis)
+    for row in rows:
+        row["source_item_analyses"] = by_item_id.get(str(row.get("id")), [])
+    return rows
+
+
 def _table_endpoint(supabase_url: str, table: str) -> str:
     base = supabase_url.rstrip("/")
     encoded_table = urllib.parse.quote(table, safe="")
@@ -177,11 +213,16 @@ def _rest_url(table: str, params: dict[str, str] | None = None) -> str:
 
 
 def _supabase_credentials() -> tuple[str, str]:
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+        or os.getenv("SUPABASE_PUBLISHABLE_KEY")
+    )
     if not url or not key:
         raise SupabaseConfigError(
-            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set to write to Supabase"
+            "Supabase credentials are missing. Set SUPABASE_URL plus SUPABASE_SERVICE_ROLE_KEY/SUPABASE_ANON_KEY, or NEXT_PUBLIC_SUPABASE_URL plus NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY."
         )
     return url, key
 
@@ -190,9 +231,10 @@ def _headers(prefer: str | None = None) -> dict[str, str]:
     _, key = _supabase_credentials()
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
+    if not key.startswith("sb_"):
+        headers["Authorization"] = f"Bearer {key}"
     if prefer:
         headers["Prefer"] = prefer
     return headers

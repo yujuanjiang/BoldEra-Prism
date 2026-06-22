@@ -13,13 +13,24 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from prism_collector.config import load_topics
+from prism_collector.env import load_local_env
 from prism_collector.supabase import (
     SupabaseConfigError,
     fetch_reader_items,
+    fetch_source_item_count,
     fetch_topic_comparisons,
     update_source_item_state,
+    using_service_role_key,
+)
+from prism_collector.supabase_db import (
+    db_configured,
+    fetch_reader_items_db,
+    fetch_source_item_count_db,
+    fetch_topic_comparisons_db,
+    update_source_item_state_db,
 )
 
+load_local_env(ROOT)
 
 STATUSES = ["unread", "reading", "read", "archived"]
 
@@ -85,10 +96,15 @@ def main() -> None:
         status = st.selectbox("Status", ["all", *STATUSES], index=0)
         limit = st.slider("Items", min_value=10, max_value=100, value=30, step=10)
         st.divider()
+        render_connection_form()
+        st.divider()
         st.caption("Environment")
         _env_status("SUPABASE_URL")
         _env_status("SUPABASE_SERVICE_ROLE_KEY", secret=True)
         _env_status("SUPABASE_ANON_KEY", secret=True)
+        _env_status("NEXT_PUBLIC_SUPABASE_URL")
+        _env_status("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", secret=True)
+        _env_status("SUPABASE_DB_URL", secret=True)
 
     selected_topic = None if topic_id == "all" else topic_id
 
@@ -98,7 +114,7 @@ def main() -> None:
             return
 
         saved_filter = True if view == "Saved" else None
-        rows = fetch_reader_items(
+        rows = fetch_reader_rows(
             topic_id=selected_topic,
             status=status,
             saved=saved_filter,
@@ -106,7 +122,10 @@ def main() -> None:
         )
     except SupabaseConfigError as exc:
         st.error(str(exc))
-        st.info("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY before running the app.")
+        st.info(
+            "Use the connection form in the sidebar, or add NEXT_PUBLIC_SUPABASE_URL "
+            "and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.local."
+        )
         return
     except Exception as exc:
         st.error(f"Could not load data: {exc}")
@@ -127,7 +146,7 @@ def render_today(rows: list[dict[str, Any]]) -> None:
     st.divider()
 
     if not rows:
-        st.info("No items found for the current filters.")
+        render_empty_items_help()
         return
 
     for row in rows:
@@ -167,7 +186,7 @@ def render_debates(topic_id: str | None) -> None:
     st.caption("Similarities, tensions, and open questions across recent material.")
 
     try:
-        comparisons = fetch_topic_comparisons(topic_id=topic_id, limit=10)
+        comparisons = fetch_comparison_rows(topic_id=topic_id, limit=10)
     except SupabaseConfigError as exc:
         st.error(str(exc))
         return
@@ -222,6 +241,40 @@ def render_metrics(rows: list[dict[str, Any]]) -> None:
     c4.metric("Saved", saved)
 
 
+def render_empty_items_help() -> None:
+    st.info("No items found for the current filters.")
+    try:
+        total = fetch_source_count()
+    except Exception as exc:
+        st.warning(f"Could not run source item count: {exc}")
+        total = None
+
+    if total is not None:
+        st.caption(f"Visible source_items rows with the current Supabase key: {total}")
+
+    if total == 0 and db_configured():
+        st.warning(
+            "The dashboard is connected through SUPABASE_DB_URL, and that database "
+            "currently has 0 rows in public.source_items. Check that the database "
+            "connection string belongs to the same project shown in Supabase SQL Editor."
+        )
+    elif total == 0 and using_service_role_key():
+        project_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL") or "unknown"
+        st.warning(
+            "The dashboard is using a service-role key, so this is not an RLS issue. "
+            f"The connected project has 0 rows in public.source_items. Connected URL: {project_url}. "
+            "Check that GitHub Actions writes to this same Supabase project, or run the collector "
+            "workflow again with sink=supabase."
+        )
+    elif not using_service_role_key():
+        st.warning(
+            "The dashboard is using a publishable/anon key. If Supabase has rows but this "
+            "count is 0, Row Level Security or API permissions are hiding them. For local "
+            "internal use, add SUPABASE_SERVICE_ROLE_KEY to .env.local or paste it in "
+            "Connect Supabase."
+        )
+
+
 def render_source_card(row: dict[str, Any]) -> None:
     analysis = first_analysis(row)
     source = source_label(row)
@@ -245,7 +298,7 @@ def render_source_card(row: dict[str, Any]) -> None:
             new_saved = st.toggle("Saved", value=saved, key=f"saved-{row['id']}")
 
         if new_status != status or new_saved != saved:
-            update_source_item_state(
+            update_item_state(
                 int(row["id"]),
                 user_status=new_status,
                 saved=new_saved,
@@ -277,7 +330,7 @@ def render_source_card(row: dict[str, Any]) -> None:
         note_cols = st.columns([0.18, 0.82])
         with note_cols[0]:
             if st.button("Save note", key=f"save-note-{row['id']}"):
-                update_source_item_state(int(row["id"]), user_note=note, mark_seen=True)
+                update_item_state(int(row["id"]), user_note=note, mark_seen=True)
                 st.success("Saved")
         with note_cols[1]:
             st.link_button("Open source", str(row.get("url") or "#"))
@@ -296,6 +349,56 @@ def source_label(row: dict[str, Any]) -> str:
     source = str(row.get("source") or "").title()
     community = row.get("community") or row.get("author") or ""
     return f"{source} / {community}" if community else source
+
+
+def fetch_reader_rows(
+    *,
+    topic_id: str | None,
+    status: str | None,
+    saved: bool | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if db_configured():
+        return fetch_reader_items_db(topic_id=topic_id, status=status, saved=saved, limit=limit)
+    return fetch_reader_items(topic_id=topic_id, status=status, saved=saved, limit=limit)
+
+
+def fetch_comparison_rows(topic_id: str | None, limit: int) -> list[dict[str, Any]]:
+    if db_configured():
+        return fetch_topic_comparisons_db(topic_id=topic_id, limit=limit)
+    return fetch_topic_comparisons(topic_id=topic_id, limit=limit)
+
+
+def fetch_source_count() -> int | None:
+    if db_configured():
+        return fetch_source_item_count_db()
+    return fetch_source_item_count()
+
+
+def update_item_state(
+    item_id: int,
+    *,
+    user_status: str | None = None,
+    saved: bool | None = None,
+    user_note: str | None = None,
+    mark_seen: bool = False,
+) -> None:
+    if db_configured():
+        update_source_item_state_db(
+            item_id,
+            user_status=user_status,
+            saved=saved,
+            user_note=user_note,
+            mark_seen=mark_seen,
+        )
+        return
+    update_source_item_state(
+        item_id,
+        user_status=user_status,
+        saved=saved,
+        user_note=user_note,
+        mark_seen=mark_seen,
+    )
 
 
 def render_tags(tags: list[Any]) -> None:
@@ -322,6 +425,51 @@ def _env_status(name: str, *, secret: bool = False) -> None:
     label = "set" if exists else "missing"
     value = "******" if secret and exists else label
     st.caption(f"{name}: {value}")
+
+
+def render_connection_form() -> None:
+    missing_credentials = not (
+        os.getenv("SUPABASE_URL")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    ) or not (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+    )
+    with st.expander("Connect Supabase", expanded=missing_credentials):
+        current_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL") or ""
+        current_key = (
+            os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            or os.getenv("SUPABASE_ANON_KEY")
+            or os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+            or ""
+        )
+        current_db_url = os.getenv("SUPABASE_DB_URL") or ""
+        url = st.text_input("Supabase URL", value=current_url, placeholder="https://...supabase.co")
+        key = st.text_input("Supabase key", value=current_key, type="password")
+        db_url = st.text_input(
+            "Database URL",
+            value=current_db_url,
+            type="password",
+            placeholder="postgresql://postgres...@...supabase.com:5432/postgres",
+        )
+        if st.button("Use for this session"):
+            if db_url:
+                os.environ["SUPABASE_DB_URL"] = db_url
+                st.success("Connected to Supabase database for this Streamlit session")
+                st.rerun()
+                return
+            if url and key:
+                os.environ["SUPABASE_URL"] = url
+                if key.startswith("sb_secret_"):
+                    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = key
+                    os.environ.pop("SUPABASE_ANON_KEY", None)
+                else:
+                    os.environ["SUPABASE_ANON_KEY"] = key
+                st.success("Connected for this Streamlit session")
+                st.rerun()
+            else:
+                st.warning("Enter both Supabase URL and key.")
 
 
 def escape(value: Any) -> str:

@@ -1,7 +1,7 @@
 import unittest
 
 from prism_collector.models import SourceItem
-from prism_collector.supabase import _row, _table_endpoint, write_supabase
+from prism_collector.supabase import _headers, _row, _table_endpoint, write_supabase
 
 
 class SupabaseTest(unittest.TestCase):
@@ -30,6 +30,51 @@ class SupabaseTest(unittest.TestCase):
 
     def test_write_supabase_empty_items_is_noop(self) -> None:
         self.assertEqual(write_supabase([]), 0)
+
+    def test_headers_do_not_send_new_keys_as_bearer_jwts(self) -> None:
+        import os
+
+        old_url = os.environ.get("SUPABASE_URL")
+        old_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        try:
+            os.environ["SUPABASE_URL"] = "https://example.supabase.co"
+            os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "sb_secret_test"
+
+            headers = _headers()
+
+            self.assertEqual(headers["apikey"], "sb_secret_test")
+            self.assertNotIn("Authorization", headers)
+        finally:
+            if old_url is None:
+                os.environ.pop("SUPABASE_URL", None)
+            else:
+                os.environ["SUPABASE_URL"] = old_url
+            if old_key is None:
+                os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+            else:
+                os.environ["SUPABASE_SERVICE_ROLE_KEY"] = old_key
+
+    def test_headers_send_legacy_jwt_keys_as_bearer(self) -> None:
+        import os
+
+        old_url = os.environ.get("SUPABASE_URL")
+        old_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        try:
+            os.environ["SUPABASE_URL"] = "https://example.supabase.co"
+            os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "legacy.jwt.key"
+
+            headers = _headers()
+
+            self.assertEqual(headers["Authorization"], "Bearer legacy.jwt.key")
+        finally:
+            if old_url is None:
+                os.environ.pop("SUPABASE_URL", None)
+            else:
+                os.environ["SUPABASE_URL"] = old_url
+            if old_key is None:
+                os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+            else:
+                os.environ["SUPABASE_SERVICE_ROLE_KEY"] = old_key
 
 
 if __name__ == "__main__":

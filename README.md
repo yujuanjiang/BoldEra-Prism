@@ -18,11 +18,12 @@ written to Supabase.
 - Compares recent items for shared, unique, and controversial points
 - Can still write JSONL files under `data/raw` for debugging
 
-For YouTube rows, the collector stores the public transcript in
-`source_items.raw_text` when available. It stores the video description,
-view/like counts, transcript availability, and comment snapshots in
-`source_items.metadata`. Comments are collected only when the video has more
-than 100 comments, and the collector stores up to 100 top-level comment threads.
+For YouTube rows, the collector only stores videos with an available public
+transcript. The transcript is stored in `source_items.raw_text`; videos without
+transcripts are skipped. The video description, view/like counts, transcript
+character count, and comment snapshots are stored in `source_items.metadata`.
+Comments are collected only when the video has more than 100 comments, and the
+collector stores up to 100 top-level comment threads.
 
 ### Run locally
 
@@ -39,6 +40,25 @@ Install the UI extra and start Streamlit:
 ```bash
 python3 -m pip install streamlit
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... PYTHONPATH=src python3 -m streamlit run app/streamlit_app.py
+```
+
+The Streamlit app also loads `.env` and `.env.local` automatically. If you have
+frontend-style Supabase values, these are accepted for read-only dashboard use:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
+
+You can also paste those values into the **Connect Supabase** panel in the
+Streamlit sidebar for the current local session.
+
+If the Supabase Data API shows zero rows while the SQL Editor shows data, paste
+the project's Postgres connection string into the sidebar **Database URL** field
+or set:
+
+```text
+SUPABASE_DB_URL
 ```
 
 The app provides:

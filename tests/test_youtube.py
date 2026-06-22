@@ -1,10 +1,12 @@
 import unittest
+from unittest.mock import patch
 
 from prism_collector.youtube import (
     COMMENT_COLLECTION_THRESHOLD,
     _comment_thread_to_dict,
     _should_collect_comments,
     _transcript_to_text,
+    collect_youtube,
 )
 
 
@@ -40,6 +42,81 @@ class YouTubeTest(unittest.TestCase):
         self.assertEqual(comment["text"], "Useful point")
         self.assertEqual(comment["like_count"], 7)
         self.assertEqual(comment["reply_count"], 2)
+
+    @patch.dict("os.environ", {"YOUTUBE_API_KEY": "test-key"})
+    @patch("prism_collector.youtube._fetch_video_comments", return_value=[])
+    @patch("prism_collector.youtube._fetch_transcript", return_value=None)
+    @patch("prism_collector.youtube._fetch_video_details")
+    @patch("prism_collector.youtube._get_json")
+    def test_collect_youtube_skips_videos_without_transcripts(
+        self,
+        get_json,
+        fetch_video_details,
+        fetch_transcript,
+        fetch_video_comments,
+    ) -> None:
+        get_json.return_value = {
+            "items": [
+                {
+                    "id": {"videoId": "v1"},
+                    "snippet": {
+                        "title": "Video",
+                        "description": "Description only",
+                        "channelTitle": "Channel",
+                    },
+                }
+            ]
+        }
+        fetch_video_details.return_value = {
+            "v1": {
+                "snippet": {"title": "Video", "description": "Description only"},
+                "statistics": {"commentCount": "200"},
+            }
+        }
+
+        items = collect_youtube({"id": "ai-company-building", "keywords": []}, limit=1)
+
+        self.assertEqual(items, [])
+        fetch_video_comments.assert_not_called()
+
+    @patch.dict("os.environ", {"YOUTUBE_API_KEY": "test-key"})
+    @patch("prism_collector.youtube._fetch_video_comments", return_value=[])
+    @patch("prism_collector.youtube._fetch_transcript", return_value="Full transcript")
+    @patch("prism_collector.youtube._fetch_video_details")
+    @patch("prism_collector.youtube._get_json")
+    def test_collect_youtube_uses_transcript_as_raw_text(
+        self,
+        get_json,
+        fetch_video_details,
+        fetch_transcript,
+        fetch_video_comments,
+    ) -> None:
+        get_json.return_value = {
+            "items": [
+                {
+                    "id": {"videoId": "v1"},
+                    "snippet": {
+                        "title": "Video",
+                        "description": "Description only",
+                        "channelTitle": "Channel",
+                    },
+                }
+            ]
+        }
+        fetch_video_details.return_value = {
+            "v1": {
+                "snippet": {"title": "Video", "description": "Description only"},
+                "statistics": {"commentCount": "1"},
+            }
+        }
+
+        items = collect_youtube({"id": "ai-company-building", "keywords": []}, limit=1)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].raw_text, "Full transcript")
+        self.assertEqual(items[0].metadata["raw_text_kind"], "transcript")
+        self.assertEqual(items[0].metadata["transcript_char_count"], len("Full transcript"))
+        fetch_video_comments.assert_not_called()
 
 
 if __name__ == "__main__":

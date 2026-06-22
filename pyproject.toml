@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Topic-based data collection and synthesis infrastructure."
 requires-python = ">=3.11"
 dependencies = [
+  "psycopg[binary]>=3.2",
   "youtube-transcript-api>=0.6.2",
 ]
 
