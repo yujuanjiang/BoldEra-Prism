@@ -118,22 +118,42 @@ def analyze_topic(topic_id: str, limit: int = 10, compare_limit: int = 8) -> dic
     return {"analyzed": analyzed_count, "comparisons": comparison_count}
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, ""))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+# Characters of source text analyzed per AI call. The whole transcript is always
+# covered: text longer than one chunk is split and analyzed in a map-reduce pass.
+# gpt-4.1-mini has a large context window, so this stays well within limits while
+# keeping each call reliable. Override with OPENAI_ITEM_CHUNK_CHARS if needed.
+ITEM_TEXT_CHUNK_CHARS = _positive_int_env("OPENAI_ITEM_CHUNK_CHARS", 40000)
+
+ITEM_ANALYSIS_SYSTEM_PROMPT = (
+    "You extract professional learning value from source material. "
+    "Be concise, factual, and avoid inventing details not supported by the input."
+)
+
+
 def _analyze_item(row: dict[str, Any], model: str) -> dict[str, Any]:
-    content = _item_content(row, max_chars=7000)
-    result = openai_json(
-        model=model,
-        system_prompt=(
-            "You extract professional learning value from source material. "
-            "Be concise, factual, and avoid inventing details not supported by the input."
-        ),
-        user_prompt=(
-            "Analyze this source item for a self-learning knowledge base.\n\n"
-            f"{content}\n\n"
-            "Return highlights, concrete claims, tools mentioned, tags, difficulty, "
-            "learning value, and follow-up questions."
-        ),
-        schema=ITEM_ANALYSIS_SCHEMA,
-    )
+    header = _item_header(row)
+    raw_text = str(row.get("raw_text") or "").strip()
+    chunks = _chunk_text(raw_text, ITEM_TEXT_CHUNK_CHARS)
+
+    if len(chunks) <= 1:
+        result = _analyze_text_segment(header, chunks[0] if chunks else "", model)
+    else:
+        # Map: analyze every chunk so the entire transcript is covered.
+        partials = [
+            _analyze_text_segment(header, chunk, model, part=(index + 1, len(chunks)))
+            for index, chunk in enumerate(chunks)
+        ]
+        # Reduce: consolidate the per-chunk analyses into one coherent analysis.
+        result = _merge_item_analyses(header, partials, model)
+
     return {
         "source_item_id": row["id"],
         "topic_id": row["topic_id"],
@@ -148,6 +168,57 @@ def _analyze_item(row: dict[str, Any], model: str) -> dict[str, Any]:
         "follow_up_questions": result["follow_up_questions"],
         "raw_response": result,
     }
+
+
+def _analyze_text_segment(
+    header: str,
+    body: str,
+    model: str,
+    part: tuple[int, int] | None = None,
+) -> dict[str, Any]:
+    if part is not None:
+        index, total = part
+        scope = (
+            f"This is part {index} of {total} of a longer transcript that was split for "
+            "analysis. Analyze ONLY the text in this part, capturing every notable point it "
+            "contains so nothing is lost when the parts are combined later.\n\n"
+        )
+    else:
+        scope = "Analyze the full source item below.\n\n"
+
+    return openai_json(
+        model=model,
+        system_prompt=ITEM_ANALYSIS_SYSTEM_PROMPT,
+        user_prompt=(
+            "Analyze this source item for a self-learning knowledge base.\n\n"
+            f"{scope}"
+            f"Source metadata:\n{header}\n\n"
+            f"Source text:\n{body}\n\n"
+            "Return a summary plus highlights, concrete claims, tools mentioned, tags, "
+            "difficulty, learning value, and follow-up questions."
+        ),
+        schema=ITEM_ANALYSIS_SCHEMA,
+    )
+
+
+def _merge_item_analyses(
+    header: str, partials: list[dict[str, Any]], model: str
+) -> dict[str, Any]:
+    return openai_json(
+        model=model,
+        system_prompt=ITEM_ANALYSIS_SYSTEM_PROMPT,
+        user_prompt=(
+            "The source item below was too long to analyze at once, so it was split into "
+            "parts that were each analyzed separately. Consolidate the per-part analyses "
+            "into ONE analysis covering the entire item. Write a single coherent summary "
+            "that spans the whole item, merge and de-duplicate the highlights, claims, "
+            "tools, tags, and follow-up questions, choose the overall difficulty, and set "
+            "learning value for the item as a whole.\n\n"
+            f"Source metadata:\n{header}\n\n"
+            f"Per-part analyses (JSON):\n{json.dumps(partials, ensure_ascii=False)}"
+        ),
+        schema=ITEM_ANALYSIS_SCHEMA,
+    )
 
 
 def _compare_items(topic_id: str, rows: list[dict[str, Any]], model: str) -> dict[str, Any]:
@@ -177,6 +248,54 @@ def _compare_items(topic_id: str, rows: list[dict[str, Any]], model: str) -> dic
         "open_questions": result["open_questions"],
         "raw_response": result,
     }
+
+
+def _item_header(row: dict[str, Any]) -> str:
+    """JSON metadata for an item, excluding the (potentially huge) raw_text."""
+    return json.dumps(
+        {
+            "id": row.get("id"),
+            "source": row.get("source"),
+            "topic_id": row.get("topic_id"),
+            "title": row.get("title"),
+            "url": row.get("url"),
+            "author": row.get("author"),
+            "community": row.get("community"),
+            "published_at": row.get("published_at"),
+            "score": row.get("score"),
+            "comment_count": row.get("comment_count"),
+            "metadata": row.get("metadata"),
+        },
+        ensure_ascii=False,
+    )
+
+
+def _chunk_text(text: str, size: int) -> list[str]:
+    """Split text into <=size-char chunks, breaking on whitespace where possible.
+
+    Returns an empty list for empty text and a single-element list when the text
+    already fits, so the entire transcript is always covered with no truncation.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    if size <= 0 or len(text) <= size:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    length = len(text)
+    while start < length:
+        end = min(start + size, length)
+        if end < length:
+            boundary = text.rfind(" ", start, end)
+            if boundary > start:
+                end = boundary
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        start = max(end, start + 1)
+    return chunks
 
 
 def _item_content(row: dict[str, Any], max_chars: int) -> str:
