@@ -5,11 +5,18 @@ from unittest.mock import patch
 from prism_collector.youtube import (
     COMMENT_COLLECTION_THRESHOLD,
     _comment_thread_to_dict,
+    _transcript_candidates,
     _transcript_proxy_config,
     _should_collect_comments,
     _transcript_to_text,
     collect_youtube,
 )
+
+
+@dataclass
+class _FakeTrack:
+    language_code: str
+    is_generated: bool
 
 
 class YouTubeTest(unittest.TestCase):
@@ -44,6 +51,26 @@ class YouTubeTest(unittest.TestCase):
         config = _transcript_proxy_config()
 
         self.assertIsNotNone(config)
+
+    def test_transcript_candidates_prefers_english_tracks(self) -> None:
+        tracks = [
+            _FakeTrack("es", True),
+            _FakeTrack("en", False),
+            _FakeTrack("en-US", True),
+        ]
+
+        candidates = _transcript_candidates(tracks)
+
+        self.assertEqual(
+            [track.language_code for track in candidates], ["en", "en-US"]
+        )
+
+    def test_transcript_candidates_falls_back_to_generated(self) -> None:
+        tracks = [_FakeTrack("es", False), _FakeTrack("fr", True)]
+
+        candidates = _transcript_candidates(tracks)
+
+        self.assertEqual([track.language_code for track in candidates], ["fr"])
 
     def test_comment_thread_to_dict(self) -> None:
         comment = _comment_thread_to_dict(

@@ -145,24 +145,70 @@ def _fetch_transcript(video_id: str) -> str | None:
         )
         return None
 
-    # Preferred: English transcript via the 1.x instance interface.
+    # List the actual transcript tracks so we can pick the most complete one.
+    # A naive fetch(languages=["en"]) prefers a manually-created caption, which is
+    # often partial (intro-only or an unfinished community contribution). We instead
+    # fetch every candidate track and keep the longest, so the full video is captured.
     try:
-        return _transcript_to_text(api.fetch(video_id, languages=["en"]))
-    except Exception as primary_exc:
-        # Fallback: fetch whatever transcript the video actually has.
+        transcript_list = api.list(video_id)
+    except Exception as list_exc:
         try:
-            transcript_list = api.list(video_id)
-            language_codes = [transcript.language_code for transcript in transcript_list]
-            transcript = transcript_list.find_transcript(language_codes)
-            return _transcript_to_text(transcript.fetch())
-        except Exception as secondary_exc:
+            return _transcript_to_text(api.fetch(video_id, languages=["en"]))
+        except Exception as fetch_exc:
             print(
-                _describe_transcript_failure(
-                    video_id, primary_exc, secondary_exc, proxy_config
-                ),
+                _describe_transcript_failure(video_id, list_exc, fetch_exc, proxy_config),
                 file=sys.stderr,
             )
             return None
+
+    candidates = _transcript_candidates(transcript_list)
+    best_text: str | None = None
+    errors: list[Exception] = []
+    for transcript in candidates:
+        try:
+            text = _transcript_to_text(transcript.fetch())
+        except Exception as exc:
+            errors.append(exc)
+            continue
+        if text and (best_text is None or len(text) > len(best_text)):
+            best_text = text
+
+    if best_text is None:
+        primary = errors[0] if errors else RuntimeError("no transcripts available")
+        secondary = errors[-1] if errors else primary
+        print(
+            _describe_transcript_failure(video_id, primary, secondary, proxy_config),
+            file=sys.stderr,
+        )
+        return None
+
+    return best_text
+
+
+def _transcript_candidates(transcript_list: Any) -> list[Any]:
+    """Ordered transcript tracks to try, maximizing transcript completeness.
+
+    Prefers English tracks (both manual and auto-generated) so we can compare
+    their lengths and keep the longest. Falls back to a generated track in any
+    language, then any available track.
+    """
+    try:
+        tracks = list(transcript_list)
+    except TypeError:
+        return []
+
+    english = [
+        track
+        for track in tracks
+        if str(getattr(track, "language_code", "") or "").lower().startswith("en")
+    ]
+    if english:
+        return english
+
+    generated = [track for track in tracks if getattr(track, "is_generated", False)]
+    if generated:
+        return generated
+    return tracks[:1]
 
 
 def _warn_no_proxy_once() -> None:
