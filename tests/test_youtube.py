@@ -5,6 +5,7 @@ from unittest.mock import patch
 from prism_collector.youtube import (
     COMMENT_COLLECTION_THRESHOLD,
     _comment_thread_to_dict,
+    _transcript_proxy_config,
     _should_collect_comments,
     _transcript_to_text,
     collect_youtube,
@@ -30,6 +31,19 @@ class YouTubeTest(unittest.TestCase):
         text = _transcript_to_text([Segment("Hello"), Segment("objects")])
 
         self.assertEqual(text, "Hello objects")
+
+    @patch.dict(
+        "os.environ",
+        {
+            "YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL": "http://proxy.example:8080",
+            "YOUTUBE_TRANSCRIPT_PROXY_HTTPS_URL": "https://proxy.example:8443",
+        },
+        clear=False,
+    )
+    def test_transcript_proxy_config_supports_generic_proxy(self) -> None:
+        config = _transcript_proxy_config()
+
+        self.assertIsNotNone(config)
 
     def test_comment_thread_to_dict(self) -> None:
         comment = _comment_thread_to_dict(

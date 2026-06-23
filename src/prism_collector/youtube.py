@@ -122,32 +122,102 @@ def _fetch_transcript(video_id: str) -> str | None:
         print(f"Transcript dependency unavailable for {video_id}: {exc}", file=sys.stderr)
         return None
 
+    attempts: list[str] = []
     try:
-        api = YouTubeTranscriptApi()
+        api = _transcript_api(YouTubeTranscriptApi)
         if hasattr(api, "fetch"):
+            attempts.append("instance.fetch(en)")
             transcript = api.fetch(video_id, languages=["en"])
         elif hasattr(YouTubeTranscriptApi, "get_transcript"):
+            attempts.append("class.get_transcript(en)")
             transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
-        else:
+        elif hasattr(YouTubeTranscriptApi, "list_transcripts"):
+            attempts.append("class.list_transcripts.find_transcript(en)")
             transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             transcript = transcript_list.find_transcript(["en"]).fetch()
+        else:
+            raise AttributeError(_transcript_api_error(YouTubeTranscriptApi, api))
     except Exception as first_exc:
         try:
-            api = YouTubeTranscriptApi()
+            api = _transcript_api(YouTubeTranscriptApi)
             if hasattr(api, "list"):
+                attempts.append("instance.list.find_generated_transcript(en)")
                 transcript_list = api.list(video_id)
                 transcript = transcript_list.find_generated_transcript(["en"]).fetch()
             elif hasattr(YouTubeTranscriptApi, "get_transcript"):
+                attempts.append("class.get_transcript(default)")
                 transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            else:
+            elif hasattr(YouTubeTranscriptApi, "list_transcripts"):
+                attempts.append("class.list_transcripts.find_generated_transcript(en)")
                 transcript = YouTubeTranscriptApi.list_transcripts(video_id).find_generated_transcript(
                     ["en"]
                 ).fetch()
+            else:
+                raise AttributeError(_transcript_api_error(YouTubeTranscriptApi, api))
         except Exception as exc:
-            print(f"Skipping transcript for {video_id}: {first_exc}; {exc}", file=sys.stderr)
+            attempted = ", ".join(attempts) or "no compatible methods"
+            print(
+                f"Skipping transcript for {video_id}: attempted {attempted}; {first_exc}; {exc}",
+                file=sys.stderr,
+            )
             return None
 
     return _transcript_to_text(transcript)
+
+
+def _transcript_api(api_class: Any) -> Any:
+    proxy_config = _transcript_proxy_config()
+    if proxy_config is not None:
+        return api_class(proxy_config=proxy_config)
+    return api_class()
+
+
+def _transcript_proxy_config() -> Any | None:
+    webshare_username = os.getenv("YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME")
+    webshare_password = os.getenv("YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD")
+    if webshare_username and webshare_password:
+        try:
+            from youtube_transcript_api.proxies import WebshareProxyConfig
+        except Exception as exc:
+            print(f"Webshare proxy config unavailable: {exc}", file=sys.stderr)
+            return None
+        locations = [
+            item.strip()
+            for item in os.getenv("YOUTUBE_TRANSCRIPT_WEBSHARE_LOCATIONS", "").split(",")
+            if item.strip()
+        ]
+        kwargs: dict[str, Any] = {
+            "proxy_username": webshare_username,
+            "proxy_password": webshare_password,
+        }
+        if locations:
+            kwargs["filter_ip_locations"] = locations
+        return WebshareProxyConfig(**kwargs)
+
+    http_url = os.getenv("YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL")
+    https_url = os.getenv("YOUTUBE_TRANSCRIPT_PROXY_HTTPS_URL")
+    if http_url or https_url:
+        try:
+            from youtube_transcript_api.proxies import GenericProxyConfig
+        except Exception as exc:
+            print(f"Generic proxy config unavailable: {exc}", file=sys.stderr)
+            return None
+        return GenericProxyConfig(http_url=http_url, https_url=https_url)
+
+    return None
+
+
+def _transcript_api_error(api_class: Any, api_instance: Any) -> str:
+    class_methods = [
+        name
+        for name in ("get_transcript", "list_transcripts")
+        if hasattr(api_class, name)
+    ]
+    instance_methods = [name for name in ("fetch", "list") if hasattr(api_instance, name)]
+    return (
+        "Unsupported youtube-transcript-api interface. "
+        f"class methods={class_methods}, instance methods={instance_methods}"
+    )
 
 
 def _transcript_to_text(transcript: Any) -> str | None:

@@ -118,6 +118,27 @@ Add this repository secret for YouTube collection:
 YOUTUBE_API_KEY
 ```
 
+GitHub Actions runs from cloud IPs, which YouTube often blocks for transcript
+requests. For transcript collection in Actions, configure one of these proxy
+options:
+
+```text
+YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME
+YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD
+YOUTUBE_TRANSCRIPT_WEBSHARE_LOCATIONS   # optional, e.g. us,ca
+```
+
+or:
+
+```text
+YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL
+YOUTUBE_TRANSCRIPT_PROXY_HTTPS_URL
+```
+
+The transcript library recommends rotating residential proxies for cloud
+deployments; another low-complexity option is to run the workflow on a local
+self-hosted runner instead of GitHub-hosted Actions.
+
 Reddit collection is currently paused. If you later get approved Reddit API
 access, these secrets can be used to re-enable it:
 
