@@ -85,6 +85,16 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests
 
+      - name: Check transcript proxy configuration
+        run: |
+          if [ -n "$YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME" ] && [ -n "$YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD" ]; then
+            echo "Transcript proxy: Webshare residential proxy configured."
+          elif [ -n "$YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL" ] || [ -n "$YOUTUBE_TRANSCRIPT_PROXY_HTTPS_URL" ]; then
+            echo "Transcript proxy: generic HTTP/HTTPS proxy configured."
+          else
+            echo "::warning::No transcript proxy configured. YouTube blocks transcript requests from GitHub Actions cloud IPs, so transcripts will be skipped. Add Webshare residential proxy secrets (YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME / YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD)."
+          fi
+
       - name: Collect data
         run: |
           ARGS=(

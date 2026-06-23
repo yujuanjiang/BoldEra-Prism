@@ -115,6 +115,9 @@ def _fetch_video_details(video_ids: list[str], *, api_key: str) -> dict[str, dic
     return {str(item.get("id")): item for item in payload.get("items", []) if item.get("id")}
 
 
+_NO_PROXY_WARNING_EMITTED = False
+
+
 def _fetch_transcript(video_id: str) -> str | None:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
@@ -122,54 +125,81 @@ def _fetch_transcript(video_id: str) -> str | None:
         print(f"Transcript dependency unavailable for {video_id}: {exc}", file=sys.stderr)
         return None
 
-    attempts: list[str] = []
+    proxy_config = _transcript_proxy_config()
+    if proxy_config is None:
+        _warn_no_proxy_once()
+
     try:
-        api = _transcript_api(YouTubeTranscriptApi)
-        if hasattr(api, "fetch"):
-            attempts.append("instance.fetch(en)")
-            transcript = api.fetch(video_id, languages=["en"])
-        elif hasattr(YouTubeTranscriptApi, "get_transcript"):
-            attempts.append("class.get_transcript(en)")
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["en"])
-        elif hasattr(YouTubeTranscriptApi, "list_transcripts"):
-            attempts.append("class.list_transcripts.find_transcript(en)")
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            transcript = transcript_list.find_transcript(["en"]).fetch()
-        else:
-            raise AttributeError(_transcript_api_error(YouTubeTranscriptApi, api))
-    except Exception as first_exc:
+        api = (
+            YouTubeTranscriptApi(proxy_config=proxy_config)
+            if proxy_config is not None
+            else YouTubeTranscriptApi()
+        )
+    except TypeError as exc:
+        # youtube-transcript-api < 1.0 does not support proxy_config / the
+        # instance-based interface. Proxies cannot be applied on those versions.
+        print(
+            f"Skipping transcript for {video_id}: installed youtube-transcript-api is too old "
+            f"for proxy support; pin youtube-transcript-api>=1.0.3 ({exc})",
+            file=sys.stderr,
+        )
+        return None
+
+    # Preferred: English transcript via the 1.x instance interface.
+    try:
+        return _transcript_to_text(api.fetch(video_id, languages=["en"]))
+    except Exception as primary_exc:
+        # Fallback: fetch whatever transcript the video actually has.
         try:
-            api = _transcript_api(YouTubeTranscriptApi)
-            if hasattr(api, "list"):
-                attempts.append("instance.list.find_generated_transcript(en)")
-                transcript_list = api.list(video_id)
-                transcript = transcript_list.find_generated_transcript(["en"]).fetch()
-            elif hasattr(YouTubeTranscriptApi, "get_transcript"):
-                attempts.append("class.get_transcript(default)")
-                transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            elif hasattr(YouTubeTranscriptApi, "list_transcripts"):
-                attempts.append("class.list_transcripts.find_generated_transcript(en)")
-                transcript = YouTubeTranscriptApi.list_transcripts(video_id).find_generated_transcript(
-                    ["en"]
-                ).fetch()
-            else:
-                raise AttributeError(_transcript_api_error(YouTubeTranscriptApi, api))
-        except Exception as exc:
-            attempted = ", ".join(attempts) or "no compatible methods"
+            transcript_list = api.list(video_id)
+            language_codes = [transcript.language_code for transcript in transcript_list]
+            transcript = transcript_list.find_transcript(language_codes)
+            return _transcript_to_text(transcript.fetch())
+        except Exception as secondary_exc:
             print(
-                f"Skipping transcript for {video_id}: attempted {attempted}; {first_exc}; {exc}",
+                _describe_transcript_failure(
+                    video_id, primary_exc, secondary_exc, proxy_config
+                ),
                 file=sys.stderr,
             )
             return None
 
-    return _transcript_to_text(transcript)
+
+def _warn_no_proxy_once() -> None:
+    global _NO_PROXY_WARNING_EMITTED
+    if _NO_PROXY_WARNING_EMITTED:
+        return
+    _NO_PROXY_WARNING_EMITTED = True
+    print(
+        "No transcript proxy configured. YouTube blocks transcript requests from cloud IPs "
+        "(GitHub Actions, AWS, GCP, Azure). Set Webshare residential proxy secrets "
+        "(YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME / YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD) or a "
+        "generic proxy (YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL / YOUTUBE_TRANSCRIPT_PROXY_HTTPS_URL).",
+        file=sys.stderr,
+    )
 
 
-def _transcript_api(api_class: Any) -> Any:
-    proxy_config = _transcript_proxy_config()
-    if proxy_config is not None:
-        return api_class(proxy_config=proxy_config)
-    return api_class()
+def _describe_transcript_failure(
+    video_id: str,
+    primary_exc: Exception,
+    secondary_exc: Exception,
+    proxy_config: Any | None,
+) -> str:
+    blocked_errors = {"RequestBlocked", "IpBlocked"}
+    exc_names = {type(primary_exc).__name__, type(secondary_exc).__name__}
+    if exc_names & blocked_errors:
+        if proxy_config is None:
+            return (
+                f"Transcript for {video_id} blocked by YouTube (cloud IP). No proxy is "
+                "configured. Set Webshare residential proxy secrets "
+                "(YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME / YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD)."
+            )
+        return (
+            f"Transcript for {video_id} blocked by YouTube even through the configured proxy. "
+            "Confirm the proxy is a Webshare 'Residential' (rotating) package - NOT 'Proxy Server' "
+            "or 'Static Residential' - and that the credentials are current."
+        )
+    return f"Skipping transcript for {video_id}: {primary_exc}"
 
 
 def _transcript_proxy_config() -> Any | None:
@@ -192,6 +222,10 @@ def _transcript_proxy_config() -> Any | None:
         }
         if locations:
             kwargs["filter_ip_locations"] = locations
+        # Newer releases let the client transparently retry on a fresh rotating IP
+        # when a request is blocked. Only pass it if the installed version supports it.
+        if _supports_kwarg(WebshareProxyConfig, "retries_when_blocked"):
+            kwargs["retries_when_blocked"] = 15
         return WebshareProxyConfig(**kwargs)
 
     http_url = os.getenv("YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL")
@@ -207,17 +241,13 @@ def _transcript_proxy_config() -> Any | None:
     return None
 
 
-def _transcript_api_error(api_class: Any, api_instance: Any) -> str:
-    class_methods = [
-        name
-        for name in ("get_transcript", "list_transcripts")
-        if hasattr(api_class, name)
-    ]
-    instance_methods = [name for name in ("fetch", "list") if hasattr(api_instance, name)]
-    return (
-        "Unsupported youtube-transcript-api interface. "
-        f"class methods={class_methods}, instance methods={instance_methods}"
-    )
+def _supports_kwarg(target: Any, name: str) -> bool:
+    try:
+        import inspect
+
+        return name in inspect.signature(target).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 def _transcript_to_text(transcript: Any) -> str | None:

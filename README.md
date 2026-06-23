@@ -118,15 +118,23 @@ Add this repository secret for YouTube collection:
 YOUTUBE_API_KEY
 ```
 
-GitHub Actions runs from cloud IPs, which YouTube often blocks for transcript
-requests. For transcript collection in Actions, configure one of these proxy
-options:
+GitHub Actions runs from cloud IPs, which YouTube blocks for transcript
+requests (this is the `RequestBlocked` / `IpBlocked` error). Transcript
+collection in Actions **requires** a rotating residential proxy. Configure one
+of these proxy options:
 
 ```text
 YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME
 YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD
 YOUTUBE_TRANSCRIPT_WEBSHARE_LOCATIONS   # optional, e.g. us,ca
 ```
+
+> Important: on Webshare, purchase the **"Residential"** package (rotating
+> residential proxies). Do **not** buy "Proxy Server" or "Static Residential" —
+> those are datacenter/static IPs that YouTube also blocks. Use the "Proxy
+> Username" and "Proxy Password" from your Webshare proxy settings (not your
+> account login). The workflow logs whether a proxy is configured and will warn
+> if it is missing.
 
 or:
 
