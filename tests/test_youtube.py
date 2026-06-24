@@ -99,7 +99,7 @@ class YouTubeTest(unittest.TestCase):
     @patch("prism_collector.youtube._fetch_transcript", return_value=None)
     @patch("prism_collector.youtube._fetch_video_details")
     @patch("prism_collector.youtube._get_json")
-    def test_collect_youtube_skips_videos_without_transcripts(
+    def test_collect_youtube_stores_metadata_when_transcript_missing(
         self,
         get_json,
         fetch_video_details,
@@ -121,14 +121,19 @@ class YouTubeTest(unittest.TestCase):
         fetch_video_details.return_value = {
             "v1": {
                 "snippet": {"title": "Video", "description": "Description only"},
-                "statistics": {"commentCount": "200"},
+                "statistics": {"commentCount": "1"},
             }
         }
 
         items = collect_youtube({"id": "ai-company-building", "keywords": []}, limit=1)
 
-        self.assertEqual(items, [])
-        fetch_video_comments.assert_not_called()
+        # The video is now kept even without a transcript, using the description
+        # as the raw_text fallback and flagged for later transcript backfill.
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].raw_text, "Description only")
+        self.assertFalse(items[0].metadata["transcript_available"])
+        self.assertEqual(items[0].metadata["raw_text_kind"], "description")
+        self.assertEqual(items[0].metadata["transcript_char_count"], 0)
 
     @patch.dict("os.environ", {"YOUTUBE_API_KEY": "test-key"})
     @patch("prism_collector.youtube._fetch_video_comments", return_value=[])

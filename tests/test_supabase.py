@@ -1,10 +1,36 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from prism_collector.models import SourceItem
-from prism_collector.supabase import _headers, _row, _table_endpoint, write_supabase
+from prism_collector.supabase import (
+    _headers,
+    _row,
+    _table_endpoint,
+    active_key_kind,
+    key_bypasses_rls,
+    write_supabase,
+)
 
 
 class SupabaseTest(unittest.TestCase):
+    @patch.dict(os.environ, {}, clear=True)
+    def test_active_key_kind_detects_secret_and_publishable(self) -> None:
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "sb_secret_abc"
+        self.assertEqual(active_key_kind(), "secret")
+        self.assertTrue(key_bypasses_rls())
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_publishable_key_in_service_slot_does_not_bypass_rls(self) -> None:
+        # A publishable key pasted into the service-role slot must NOT be reported
+        # as bypassing RLS — this is the cause of "SQL shows rows, Data API shows 0".
+        os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "sb_publishable_abc"
+        self.assertEqual(active_key_kind(), "publishable")
+        self.assertFalse(key_bypasses_rls())
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_active_key_kind_missing(self) -> None:
+        self.assertEqual(active_key_kind(), "missing")
     def test_table_endpoint(self) -> None:
         endpoint = _table_endpoint("https://example.supabase.co/", "source_items")
 

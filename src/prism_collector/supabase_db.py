@@ -4,8 +4,28 @@ import os
 from typing import Any
 
 
+def _db_url() -> str | None:
+    """Return a cleaned SUPABASE_DB_URL.
+
+    Tolerates common paste mistakes: a leading 'SUPABASE_DB_URL=' prefix (copying
+    the whole .env line), surrounding quotes, a 'psql ' prefix, and stray
+    whitespace — any of which otherwise make libpq reject the connection string.
+    """
+    raw = os.getenv("SUPABASE_DB_URL")
+    if not raw:
+        return None
+    value = raw.strip()
+    if value.lower().startswith("psql "):
+        value = value[len("psql "):].strip()
+    if value.lower().startswith("supabase_db_url="):
+        value = value.split("=", 1)[1].strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value or None
+
+
 def db_configured() -> bool:
-    return bool(os.getenv("SUPABASE_DB_URL"))
+    return bool(_db_url())
 
 
 def fetch_reader_items_db(
@@ -52,9 +72,9 @@ def fetch_reader_items_db(
           ) as source_item_analyses
         from public.source_items si
         left join public.source_item_analyses sia on sia.source_item_id = si.id
-        where (%s is null or si.topic_id = %s)
-          and (%s is null or %s = 'all' or si.user_status = %s)
-          and (%s is null or si.saved = %s)
+        where (%s::text is null or si.topic_id = %s)
+          and (%s::text is null or %s::text = 'all' or si.user_status = %s)
+          and (%s::boolean is null or si.saved = %s)
         group by si.id
         order by si.collected_at desc
         limit %s
@@ -82,7 +102,7 @@ def fetch_topic_comparisons_db(topic_id: str | None = None, limit: int = 10) -> 
           open_questions,
           created_at
         from public.topic_comparisons
-        where (%s is null or topic_id = %s)
+        where (%s::text is null or topic_id = %s)
         order by created_at desc
         limit %s
     """
@@ -120,7 +140,7 @@ def _fetch_rows(query: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
     import psycopg
     from psycopg.rows import dict_row
 
-    db_url = os.getenv("SUPABASE_DB_URL")
+    db_url = _db_url()
     if not db_url:
         raise RuntimeError("SUPABASE_DB_URL is not set")
     with psycopg.connect(db_url, row_factory=dict_row) as conn:
@@ -132,7 +152,7 @@ def _fetch_rows(query: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
 def _execute(query: str, params: list[Any]) -> None:
     import psycopg
 
-    db_url = os.getenv("SUPABASE_DB_URL")
+    db_url = _db_url()
     if not db_url:
         raise RuntimeError("SUPABASE_DB_URL is not set")
     with psycopg.connect(db_url) as conn:

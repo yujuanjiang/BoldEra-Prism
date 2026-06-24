@@ -18,10 +18,14 @@ written to Supabase.
 - Compares recent items for shared, unique, and controversial points
 - Can still write JSONL files under `data/raw` for debugging
 
-For YouTube rows, the collector only stores videos with an available public
-transcript. The transcript is stored in `source_items.raw_text`; videos without
-transcripts are skipped. The video description, view/like counts, transcript
-character count, and comment snapshots are stored in `source_items.metadata`.
+For YouTube rows, the collector stores every video it finds. When a public
+transcript is available it is stored in `source_items.raw_text` (with
+`metadata.transcript_available = true`); when the transcript is blocked or
+missing, the video is still stored using its description as the `raw_text`
+fallback and flagged with `metadata.transcript_available = false`, so a later
+run can backfill the transcript once a proxy is configured. The video
+description, view/like counts, transcript character count, and comment
+snapshots are stored in `source_items.metadata`.
 Comments are collected only when the video has more than 100 comments, and the
 collector stores up to 100 top-level comment threads.
 

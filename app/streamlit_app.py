@@ -16,9 +16,11 @@ from prism_collector.config import load_topics
 from prism_collector.env import load_local_env
 from prism_collector.supabase import (
     SupabaseConfigError,
+    active_key_kind,
     fetch_reader_items,
     fetch_source_item_count,
     fetch_topic_comparisons,
+    key_bypasses_rls,
     update_source_item_state,
     using_service_role_key,
 )
@@ -97,6 +99,7 @@ def main() -> None:
         limit = st.slider("Items", min_value=10, max_value=100, value=30, step=10)
         st.divider()
         render_connection_form()
+        render_connection_diagnostics()
         st.divider()
         st.caption("Environment")
         _env_status("SUPABASE_URL")
@@ -470,6 +473,73 @@ def render_connection_form() -> None:
                 st.rerun()
             else:
                 st.warning("Enter both Supabase URL and key.")
+
+
+def _project_ref(url: str) -> str:
+    import re
+
+    match = re.search(r"https?://([^.]+)\.supabase\.", url or "")
+    return match.group(1) if match else ""
+
+
+def render_connection_diagnostics() -> None:
+    """Confirm which project/key the dashboard reads and whether the table has rows.
+
+    Distinguishes 'table unreachable / missing' from 'connected but empty', so a
+    project mismatch between the dashboard and GitHub Actions is easy to spot.
+    """
+    with st.expander("Test connection", expanded=False):
+        url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL") or ""
+        project_ref = _project_ref(url)
+
+        using_db = db_configured()
+        if using_db:
+            mode = "Postgres (SUPABASE_DB_URL)"
+        else:
+            mode = "Data API (PostgREST)"
+
+        st.caption(f"Mode: {mode}")
+        st.caption(f"Project: {project_ref or 'unknown'}")
+        if not using_db:
+            st.caption(f"Key type: {active_key_kind()} (bypasses RLS: {key_bypasses_rls()})")
+
+        if not st.button("Run connection test"):
+            return
+
+        try:
+            total = fetch_source_count()
+        except Exception as exc:
+            st.error(f"Could not reach source_items: {exc}")
+            st.caption(
+                "A 404 / 'relation does not exist' means the table is missing in this "
+                "project — run the migrations in supabase/migrations. Any other error "
+                "usually means the URL or key is wrong."
+            )
+            return
+
+        if total is None:
+            st.warning("Connected, but the row count was unavailable.")
+        elif total == 0:
+            if not using_db and not key_bypasses_rls():
+                st.warning(
+                    f"Connected to project '{project_ref}' with a "
+                    f"'{active_key_kind()}' key, which does NOT bypass Row Level "
+                    "Security. If the Supabase SQL Editor shows rows but this is 0, RLS "
+                    "is hiding them from the Data API. Fastest fix: paste your project's "
+                    "Postgres connection string into the Database URL field above (reads "
+                    "directly, like the SQL Editor). Or put your sb_secret_... key in "
+                    "the Supabase key field."
+                )
+            else:
+                st.warning(
+                    f"Connected to project '{project_ref}' but source_items has 0 rows "
+                    "here. If the SQL Editor shows rows, you are pointed at a different "
+                    "project — line up the URL/connection string with that project ref."
+                )
+        else:
+            st.success(
+                f"Connected to project '{project_ref}'. source_items has {total} row(s)."
+            )
 
 
 def escape(value: Any) -> str:

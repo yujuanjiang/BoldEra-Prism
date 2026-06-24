@@ -171,8 +171,57 @@ def insert_topic_comparison(row: dict[str, object]) -> int:
     return 1
 
 
+def _active_key() -> str | None:
+    return (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or os.getenv("SUPABASE_ANON_KEY")
+        or os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY")
+        or os.getenv("SUPABASE_PUBLISHABLE_KEY")
+    )
+
+
+def active_key_kind() -> str:
+    """Classify the key the reader will actually use.
+
+    Returns one of 'secret', 'service_role', 'publishable', 'anon', 'jwt',
+    'unknown', or 'missing'. Only 'secret' and 'service_role' bypass RLS — this
+    is what determines whether the Data API can see rows that RLS would hide.
+    """
+    key = _active_key()
+    if not key:
+        return "missing"
+    if key.startswith("sb_secret_"):
+        return "secret"
+    if key.startswith("sb_publishable_"):
+        return "publishable"
+    if key.startswith("eyJ"):
+        return _jwt_role_kind(key)
+    return "unknown"
+
+
+def _jwt_role_kind(token: str) -> str:
+    import base64
+
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")))
+    except Exception:
+        return "jwt"
+    role = claims.get("role")
+    return role if role in {"service_role", "anon"} else "jwt"
+
+
+def key_bypasses_rls() -> bool:
+    """True only when the active key elevates past Row Level Security."""
+    return active_key_kind() in {"secret", "service_role"}
+
+
 def using_service_role_key() -> bool:
-    return bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+    # Back-compat name: true only when the active key actually bypasses RLS, not
+    # merely when the SUPABASE_SERVICE_ROLE_KEY env var happens to be set (it may
+    # hold a publishable key, which does NOT bypass RLS).
+    return key_bypasses_rls()
 
 
 def _attach_item_analyses(rows: list[dict[str, object]]) -> list[dict[str, object]]:

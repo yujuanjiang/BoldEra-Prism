@@ -56,15 +56,26 @@ def collect_youtube(topic: dict[str, Any], limit: int = 10) -> list[SourceItem]:
         statistics = details.get("statistics", {})
         comment_count = _int_or_none(statistics.get("commentCount"))
         transcript = _fetch_transcript(video_id)
-        if not transcript:
-            print(f"Skipping YouTube video {video_id}: transcript unavailable", file=sys.stderr)
-            continue
+        transcript_available = bool(transcript)
+        description = detail_snippet.get("description") or snippet.get("description") or None
+        # Keep the video even when the transcript is blocked/unavailable: store the
+        # description as the raw_text fallback so the item still shows up downstream,
+        # and flag it so a later run can backfill the transcript once a proxy works.
+        if transcript_available:
+            raw_text = transcript
+            raw_text_kind = "transcript"
+        else:
+            raw_text = description
+            raw_text_kind = "description"
+            print(
+                f"YouTube video {video_id}: transcript unavailable, storing metadata only",
+                file=sys.stderr,
+            )
         comments = (
             _fetch_video_comments(video_id, api_key=api_key, limit=MAX_COMMENT_THREADS)
             if _should_collect_comments(comment_count)
             else []
         )
-        description = detail_snippet.get("description") or snippet.get("description") or None
         items.append(
             SourceItem(
                 source="youtube",
@@ -76,17 +87,17 @@ def collect_youtube(topic: dict[str, Any], limit: int = 10) -> list[SourceItem]:
                 community=detail_snippet.get("channelTitle") or snippet.get("channelTitle"),
                 published_at=detail_snippet.get("publishedAt") or snippet.get("publishedAt"),
                 comment_count=comment_count,
-                raw_text=transcript,
+                raw_text=raw_text,
                 metadata={
                     "channel_id": detail_snippet.get("channelId") or snippet.get("channelId"),
                     "thumbnail": _thumbnail_url(detail_snippet or snippet),
                     "description": description,
-                    "raw_text_kind": "transcript",
-                    "transcript_char_count": len(transcript),
+                    "raw_text_kind": raw_text_kind,
+                    "transcript_char_count": len(transcript) if transcript_available else 0,
                     "view_count": _int_or_none(statistics.get("viewCount")),
                     "like_count": _int_or_none(statistics.get("likeCount")),
-                    "transcript_available": True,
-                    "transcript_source": "youtube-transcript-api",
+                    "transcript_available": transcript_available,
+                    "transcript_source": "youtube-transcript-api" if transcript_available else None,
                     "comments_collected": len(comments),
                     "comment_collection_threshold": COMMENT_COLLECTION_THRESHOLD,
                     "youtube_comments": comments,
