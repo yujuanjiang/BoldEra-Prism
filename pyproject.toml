@@ -19,3 +19,12 @@ ui = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Streamlit Community Cloud installs dependencies with Poetry when it sees this
+# pyproject.toml. The importable package lives at src/prism_collector, not a
+# folder named after the project ("boldera-prism"), so Poetry fails to locate it
+# during the final "install the current project" step. Point Poetry at the real
+# package location. This block is ignored by setuptools/pip, so GitHub Actions
+# (`pip install -e .`) is unaffected.
+[tool.poetry]
+packages = [{ include = "prism_collector", from = "src" }]
