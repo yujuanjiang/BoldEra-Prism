@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "boldera-prism"
 version = "0.1.0"
 description = "Topic-based data collection and synthesis infrastructure."
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "psycopg[binary]>=3.2",
   "youtube-transcript-api>=1.0.3",
