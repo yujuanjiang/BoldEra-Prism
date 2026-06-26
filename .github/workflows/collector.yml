@@ -38,7 +38,8 @@ on:
         required: true
         default: "8"
   schedule:
-    - cron: "17 12 * * 1"
+    # Daily at 12:17 UTC (cron is always UTC). Fields: min hour day-of-month month day-of-week.
+    - cron: "17 12 * * *"
 
 permissions:
   contents: read
