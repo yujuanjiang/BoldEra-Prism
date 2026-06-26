@@ -12,9 +12,9 @@ on:
         required: true
         default: youtube
       limit:
-        description: Items per source query
+        description: Target items collected per topic per run
         required: true
-        default: "10"
+        default: "20"
       dry_run:
         description: Validate setup without calling external APIs
         required: true
@@ -51,7 +51,7 @@ jobs:
     env:
       TOPIC: ${{ github.event.inputs.topic || 'all' }}
       SOURCES: ${{ github.event.inputs.sources || 'youtube' }}
-      LIMIT: ${{ github.event.inputs.limit || '10' }}
+      LIMIT: ${{ github.event.inputs.limit || '20' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       SINK: ${{ github.event.inputs.sink || 'supabase' }}
       RUN_AI: ${{ github.event.inputs.run_ai || 'false' }}
@@ -60,6 +60,10 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      # Quality/recency filters (tune via repo Variables; defaults shown).
+      YOUTUBE_MIN_AGE_DAYS: ${{ vars.YOUTUBE_MIN_AGE_DAYS || '7' }}
+      YOUTUBE_MIN_COMMENTS: ${{ vars.YOUTUBE_MIN_COMMENTS || '50' }}
+      YOUTUBE_MAX_SEARCH_PAGES: ${{ vars.YOUTUBE_MAX_SEARCH_PAGES || '6' }}
       YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME: ${{ secrets.YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME }}
       YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD: ${{ secrets.YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD }}
       YOUTUBE_TRANSCRIPT_WEBSHARE_LOCATIONS: ${{ secrets.YOUTUBE_TRANSCRIPT_WEBSHARE_LOCATIONS }}

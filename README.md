@@ -26,6 +26,18 @@ fallback and flagged with `metadata.transcript_available = false`, so a later
 run can backfill the transcript once a proxy is configured. The video
 description, view/like counts, transcript character count, and comment
 snapshots are stored in `source_items.metadata`.
+
+The collector fetches the newest videos for each topic, skips any video whose id
+is already stored, and applies quality filters before scraping: videos must be
+at least `YOUTUBE_MIN_AGE_DAYS` old (default 7, so they have had time to gather
+comments) and have at least `YOUTUBE_MIN_COMMENTS` comments (default 50). Set
+these as repository Variables to tune them; set either to `0` to disable.
+
+To reach the target number of videos per topic (the `limit`, default 20), the
+collector pages through search results until it has `limit` qualifying, not-yet
+-stored videos, or it hits `YOUTUBE_MAX_SEARCH_PAGES` (default 6). Each search
+page costs 100 YouTube quota units, so the cap bounds quota use when a topic
+can't fill the target.
 Comments are collected only when the video has more than 100 comments, and the
 collector stores up to 100 top-level comment threads.
 
