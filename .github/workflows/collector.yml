@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       topic:
-        description: Topic id from config/topics.json
+        description: Topic id from config/topics.json, or 'all' for every topic
         required: true
-        default: ai-company-building
+        default: all
       sources:
         description: Comma-separated sources to collect
         required: true
@@ -32,7 +32,7 @@ on:
         description: Analyze collected Supabase items with AI
         required: true
         type: boolean
-        default: true
+        default: false
       compare_limit:
         description: Recent source items to compare for similar/controversial points
         required: true
@@ -49,12 +49,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      TOPIC: ${{ github.event.inputs.topic || 'ai-company-building' }}
+      TOPIC: ${{ github.event.inputs.topic || 'all' }}
       SOURCES: ${{ github.event.inputs.sources || 'youtube' }}
       LIMIT: ${{ github.event.inputs.limit || '10' }}
       DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
       SINK: ${{ github.event.inputs.sink || 'supabase' }}
-      RUN_AI: ${{ github.event.inputs.run_ai || 'true' }}
+      RUN_AI: ${{ github.event.inputs.run_ai || 'false' }}
       COMPARE_LIMIT: ${{ github.event.inputs.compare_limit || '8' }}
       PYTHONPATH: src
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
