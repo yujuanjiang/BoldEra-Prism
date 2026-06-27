@@ -34,6 +34,17 @@ from prism_collector.supabase_db import (
 
 load_local_env(ROOT)
 
+# When deployed (e.g. Streamlit Community Cloud), configuration is supplied via
+# st.secrets rather than .env.local. Mirror those values into os.environ so the
+# existing os.getenv-based config (Supabase URL/keys, SUPABASE_DB_URL) keeps
+# working unchanged. Local runs without a secrets file are unaffected.
+try:
+    for _secret_key, _secret_value in st.secrets.items():
+        if isinstance(_secret_value, str):
+            os.environ.setdefault(_secret_key, _secret_value)
+except Exception:
+    pass
+
 STATUSES = ["unread", "reading", "read", "archived"]
 
 

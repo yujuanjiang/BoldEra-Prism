@@ -19,3 +19,16 @@ def find_topic(topics: list[dict[str, Any]], topic_id: str) -> dict[str, Any]:
             return topic
     available = ", ".join(str(topic.get("id")) for topic in topics)
     raise ValueError(f"unknown topic '{topic_id}'. Available topics: {available}")
+
+
+def select_topics(topics: list[dict[str, Any]], topic_id: str) -> list[dict[str, Any]]:
+    """Resolve a --topic argument to the topics to process.
+
+    Use 'all' (or '*') to process every configured topic; otherwise resolve the
+    single matching topic.
+    """
+    if topic_id.strip().lower() in {"all", "*"}:
+        if not topics:
+            raise ValueError("no topics configured")
+        return topics
+    return [find_topic(topics, topic_id)]

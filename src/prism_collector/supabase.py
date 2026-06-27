@@ -40,6 +40,25 @@ def write_supabase(items: list[SourceItem], table: str = "source_items") -> int:
     return len(items)
 
 
+def fetch_existing_external_ids(source: str, external_ids: list[str]) -> set[str]:
+    """Return the subset of external_ids that already exist for the given source.
+
+    Used to skip re-scraping videos that are already stored.
+    """
+    if not external_ids:
+        return set()
+    in_list = ",".join(external_ids)
+    rows = _get(
+        "source_items",
+        {
+            "select": "external_id",
+            "source": f"eq.{source}",
+            "external_id": f"in.({in_list})",
+        },
+    )
+    return {str(row["external_id"]) for row in rows if row.get("external_id")}
+
+
 def fetch_source_items_without_analysis(topic_id: str, limit: int = 10) -> list[dict[str, object]]:
     existing = _get(
         "source_item_analyses",

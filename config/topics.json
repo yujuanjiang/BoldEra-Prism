@@ -89,6 +89,42 @@
       "youtube": {
         "query": "how to use AI to improve personal productivity daily life"
       }
+    },
+    {
+      "id": "ai-agent",
+      "name": "AI Agents",
+      "keywords": [
+        "AI agents",
+        "autonomous AI agents",
+        "agentic workflows",
+        "tool-using AI agents",
+        "multi-agent systems"
+      ],
+      "reddit": {
+        "enabled": false,
+        "subreddits": []
+      },
+      "youtube": {
+        "query": "AI agents autonomous agentic workflows how to build"
+      }
+    },
+    {
+      "id": "ai-skills",
+      "name": "AI Skills",
+      "keywords": [
+        "AI skills",
+        "agent skills",
+        "building AI skills",
+        "Claude skills",
+        "LLM skills and tools"
+      ],
+      "reddit": {
+        "enabled": false,
+        "subreddits": []
+      },
+      "youtube": {
+        "query": "AI skills building agent skills tutorial"
+      }
     }
   ]
 }
