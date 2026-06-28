@@ -93,12 +93,34 @@ jobs:
       - name: Check transcript proxy configuration
         run: |
           if [ -n "$YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME" ] && [ -n "$YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD" ]; then
-            echo "Transcript proxy: Webshare residential proxy configured."
+            echo "Transcript proxy: Webshare credentials present (paid 'Residential' rotating plan required for this to actually work)."
           elif [ -n "$YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL" ] || [ -n "$YOUTUBE_TRANSCRIPT_PROXY_HTTPS_URL" ]; then
             echo "Transcript proxy: generic HTTP/HTTPS proxy configured."
           else
             echo "::warning::No transcript proxy configured. YouTube blocks transcript requests from GitHub Actions cloud IPs, so transcripts will be skipped. Add Webshare residential proxy secrets (YOUTUBE_TRANSCRIPT_WEBSHARE_USERNAME / YOUTUBE_TRANSCRIPT_WEBSHARE_PASSWORD)."
           fi
+
+      - name: Transcript proxy self-test
+        if: ${{ env.DRY_RUN != 'true' }}
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import sys
+          from prism_collector.youtube import _fetch_transcript
+          # Stable, reliably-captioned video used only to verify the proxy works.
+          video_id = "dQw4w9WgXcQ"
+          text = _fetch_transcript(video_id)
+          if text:
+              print(f"::notice::Transcript proxy OK — fetched {len(text)} chars for {video_id}.")
+          else:
+              print(
+                  "::error::Transcript proxy NOT working (see the error above). The most "
+                  "likely cause is that the Webshare plan is the free/datacenter or "
+                  "'Static Residential' product, not the paid rotating 'Residential' "
+                  "package that YouTube does not block."
+              )
+              sys.exit(1)
+          PY
 
       - name: Collect data
         run: |
