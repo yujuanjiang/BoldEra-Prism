@@ -436,9 +436,11 @@ def _transcript_proxy_config() -> Any | None:
         if locations:
             kwargs["filter_ip_locations"] = locations
         # Newer releases let the client transparently retry on a fresh rotating IP
-        # when a request is blocked. Only pass it if the installed version supports it.
+        # when a request is blocked. Keep this modest: if the proxy is being
+        # rate-limited (429s), a high retry count makes each video take minutes and
+        # can blow the job timeout. Tune with YOUTUBE_TRANSCRIPT_MAX_RETRIES.
         if _supports_kwarg(WebshareProxyConfig, "retries_when_blocked"):
-            kwargs["retries_when_blocked"] = 15
+            kwargs["retries_when_blocked"] = _int_env("YOUTUBE_TRANSCRIPT_MAX_RETRIES", 3)
         return WebshareProxyConfig(**kwargs)
 
     http_url = os.getenv("YOUTUBE_TRANSCRIPT_PROXY_HTTP_URL")

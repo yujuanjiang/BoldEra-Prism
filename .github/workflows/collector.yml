@@ -47,7 +47,7 @@ permissions:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       TOPIC: ${{ github.event.inputs.topic || 'all' }}
       SOURCES: ${{ github.event.inputs.sources || 'youtube' }}
